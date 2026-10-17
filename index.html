@@ -51,7 +51,7 @@ textarea{min-height:90px}
 const $=s=>document.querySelector(s);
 const KEY="words16";
 let S=JSON.parse(localStorage.getItem(KEY)||"{}");
-S.cards=S.cards||{};S.sel=S.sel||"1.1";S.sent=S.sent||{};S.imp=S.imp||{};S.tx=S.tx||{};S.ed=S.ed||{};S.bd=S.bd||{};S.snd=S.snd||"btn";
+S.cards=S.cards||{};S.sel=S.sel||"1.1";S.sent=S.sent||{};S.imp=S.imp||{};S.tx=S.tx||{};S.ed=S.ed||{};S.bd=S.bd||{};S.snd=S.snd||"btn";S.src=S.src||"mp3";S.ipa=S.ipa||"hint";S.voice=S.voice||"";
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const U=()=>{
   const o={};
@@ -94,16 +94,17 @@ function rCards(){
   if(!cur){h+=`<div class="card"><h2>На сегодня всё</h2><p class="mut">Выберите другой юнит или возвращайтесь завтра.</p></div>`}
   else{
     const w=cur.split(":")[1],note=u.notes?.[w]||"";
-    const cc=cardClips();if(cc)setSrc(cc.tr);
-    h+=`<div class="card"><div class="word" style="display:flex;align-items:center;justify-content:center;gap:12px">${w}${cc?`<button class="t" style="font-size:22px;padding:6px 12px" onclick="cardPlay([0])" title="Повторить слово">🔊</button>`:""}</div>
+    const sm=soundMode(),cc=cardClips(),en=dbEntry(S.sel,w);if(sm=="mp3")setSrc(cc.tr);
+    h+=`<div class="card"><div class="word" style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:${en&&en.ipa&&(S.ipa=="always"||(S.ipa=="hint"&&shown))?4:18}px">${w}${sm?`<button class="t" style="font-size:22px;padding:6px 12px" onclick="cardPlay([0])" title="Повторить слово">🔊</button>`:""}</div>
+    ${en&&en.ipa&&(S.ipa=="always"||(S.ipa=="hint"&&shown))?`<div class="mut" style="text-align:center;font-size:18px;margin-bottom:14px">[${esc(en.ipa)}]</div>`:""}
     <textarea id="sent" placeholder="Ваше предложение со словом ${w}">${esc(S.sent[cur]||"")}</textarea>
     ${shown?`${(()=>{const e=dbEntry(S.sel,w);return e?`<p><span class="chip">${esc(e.pos)}</span>${esc(e.d)}<br><i class="mut">${esc(e.x)}</i></p>`:""})()}<p class="mut">${note?"Подсказка: "+esc(note):"Вспомните перевод, другую часть речи и предлог."}</p>
-    ${cc?`<div class="wrap" style="margin-top:0"><button class="t" onclick="cardPlay([1])">🔊 Определение</button><button class="t" onclick="cardPlay([2])">🔊 Пример</button><button class="t" onclick="cardPlay([0,1,2])">🔊 Всё</button></div>`:""}
+    ${sm&&(sm=="mp3"||en)?`<div class="wrap" style="margin-top:0"><button class="t" onclick="cardPlay([1])">🔊 Определение</button><button class="t" onclick="cardPlay([2])">🔊 Пример</button><button class="t" onclick="cardPlay([0,1,2])">🔊 Всё</button></div>`:""}
     <div class="row"><button class="b g" onclick="gr(0)">Забыл</button><button class="b g" onclick="gr(3)">Трудно</button><button class="b" onclick="gr(4)">Хорошо</button><button class="b" onclick="gr(5)">Легко</button></div>`
     :`<button class="b" style="width:100%;margin-top:10px" onclick="shown=true;keep();render()">Показать подсказку</button>`}</div>`;
   }
   $("#app").innerHTML=h;
-  if(cur&&cardClips()){
+  if(cur&&soundMode()){
     if(S.snd=="card"&&said!=cur){said=cur;cardPlay([0])}
     if(S.snd=="hint"&&shown&&hinted!=cur){hinted=cur;cardPlay([0,1,2])}
   }
@@ -117,10 +118,36 @@ function cardClips(){
   return{tr,clips:tr.clips.map((c,i)=>bd[i]?[bd[i][0],bd[i][1]]:[c[0],c[1]])};
 }
 // list: какие части слова играть по очереди: 0 слово, 1 определение, 2 пример
+const ttsOk=()=>"speechSynthesis" in window&&"SpeechSynthesisUtterance" in window;
+// Какой звук использовать на карточке: "mp3", "tts" или null. Если выбранного источника нет, берётся другой.
+function soundMode(){
+  const m=!!cardClips(),t=ttsOk();
+  if(S.src=="tts")return t?"tts":m?"mp3":null;
+  return m?"mp3":t?"tts":null;
+}
+const enVoices=()=>ttsOk()?speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang)):[];
+function ttsSpeak(texts){
+  if(!ttsOk())return;
+  speechSynthesis.cancel();
+  const v=enVoices().find(x=>x.voiceURI==S.voice);
+  setTimeout(()=>{texts.filter(Boolean).forEach(t=>{
+    const u=new SpeechSynthesisUtterance(t);
+    if(v){u.voice=v;u.lang=v.lang}else u.lang="en-US";
+    u.rate=A.rate;speechSynthesis.speak(u);
+  })},60);
+}
+// list: какие части слова играть по очереди: 0 слово, 1 определение, 2 пример
 function cardPlay(list){
-  const cc=cardClips();if(!cc||!cur)return;
-  const wi=U()[S.sel].words.indexOf(cur.split(":")[1]);if(wi<0)return;
-  const tok=++A.tok;A.whole=false;A.end=null;AU.pause();setSrc(cc.tr);
+  const m=soundMode();if(!m||!cur)return;
+  const w=cur.split(":")[1];
+  if(m=="tts"){
+    stopAud();
+    const e=dbEntry(S.sel,w),parts=[w,e&&e.d,e&&e.x];
+    ttsSpeak(list.map(k=>parts[k]));return;
+  }
+  const cc=cardClips();
+  const wi=U()[S.sel].words.indexOf(w);if(wi<0)return;
+  const tok=++A.tok;A.whole=false;A.end=null;AU.pause();try{speechSynthesis.cancel()}catch(e){}setSrc(cc.tr);
   const f=cc.tr.file;let k=0,tries=0;
   const ready=()=>BLOBS[f]&&AU.src==BLOBS[f]&&AU.readyState>=1;
   const next=()=>{
@@ -138,6 +165,7 @@ function cardPlay(list){
   };
   next();
 }
+if(ttsOk())speechSynthesis.onvoiceschanged=()=>{if(tab=="set"&&!($("#imp")||{}).value)render()};
 function keep(){const t=$("#sent");if(t&&cur){S.sent[cur]=t.value;save()}}
 function gr(q){keep();stopAud();grade(cur,q);cur=null;said=hinted=null;render()}
 
@@ -279,7 +307,7 @@ function clipEnded(){
   if(A.chain&&i<C.length-1){const tok=A.tok;setTimeout(()=>{if(tok==A.tok)playClip(i+1)},400)}
   else updNow();
 }
-function stopAud(){A.tok++;AU.pause()}
+function stopAud(){A.tok++;AU.pause();try{if(window.speechSynthesis)speechSynthesis.cancel()}catch(e){}}
 function step(d){
   const n=A.idx<0?(d>0?0:C.length-1):Math.min(C.length-1,Math.max(0,A.idx+d));
   playClip(n);
@@ -336,10 +364,23 @@ function rProg(){
 /* ---------- слова ---------- */
 function rSet(){
   const sm=(v,l)=>`<button class="t ${S.snd==v?'on':''}" onclick="S.snd='${v}';save();render()">${l}</button>`;
+  const sv=(v,l)=>`<button class="t ${S.src==v?'on':''}" onclick="S.src='${v}';save();render()">${l}</button>`;
+  const si=(v,l)=>`<button class="t ${S.ipa==v?'on':''}" onclick="S.ipa='${v}';save();render()">${l}</button>`;
+  const voices=enVoices();
   $("#app").innerHTML=`<div class="card"><h2>Звук на карточках</h2>
   <p class="mut">Когда озвучивать слово. Кнопка 🔊 на карточке есть при любом варианте, если запись слов юнита загружена.</p>
   <div class="wrap">${sm("btn","Только по кнопке")}${sm("card","При появлении карточки")}${sm("hint","После подсказки")}</div>
   <p class="mut">«После подсказки»: слово, определение и пример звучат, когда вы нажали «Показать подсказку».</p></div>
+  <div class="card"><h2>Голос</h2>
+  <p class="mut">Чем озвучивать слова на карточках. Если выбранного источника для юнита нет (например, нет mp3), берётся другой.</p>
+  <div class="wrap">${sv("mp3","Запись из mp3")}${sv("tts","Синтезатор речи")}</div>
+  ${ttsOk()?(voices.length?`<select onchange="S.voice=this.value;save()"><option value="">Голос по умолчанию</option>${voices.map(v=>`<option value="${esc(v.voiceURI)}" ${v.voiceURI==S.voice?'selected':''}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select>
+  <div class="row" style="margin-top:8px"><button class="b g" onclick="ttsSpeak(['Hello! This is how the selected voice sounds.'])">🔊 Проверить голос</button></div>`
+  :`<p class="mut">Английских голосов синтезатора на устройстве не найдено. Их можно добавить в настройках Android (синтез речи).</p><div class="row"><button class="b g" onclick="ttsSpeak(['Hello! This is a test.'])">🔊 Проверить</button></div>`)
+  :`<p class="mut">Этот браузер не поддерживает синтезатор речи.</p>`}</div>
+  <div class="card"><h2>Транскрипция</h2>
+  <p class="mut">Когда показывать транскрипцию слова на карточке.</p>
+  <div class="wrap">${si("always","Всегда")}${si("hint","После подсказки")}${si("off","Скрыта")}</div></div>
   <div class="card"><h2>Импорт слов</h2>
   <p class="mut">По одной строке на юнит: <b>том.юнит: слово, слово, ...</b><br>Например: 1.2: apple, bridge, careful</p>
   <textarea id="imp" placeholder="1.2: ..."></textarea>
