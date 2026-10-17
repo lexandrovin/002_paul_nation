@@ -51,7 +51,7 @@ textarea{min-height:90px}
 const $=s=>document.querySelector(s);
 const KEY="words16";
 let S=JSON.parse(localStorage.getItem(KEY)||"{}");
-S.cards=S.cards||{};S.sel=S.sel||"1.1";S.sent=S.sent||{};S.imp=S.imp||{};S.tx=S.tx||{};S.ed=S.ed||{};S.bd=S.bd||{};
+S.cards=S.cards||{};S.sel=S.sel||"1.1";S.sent=S.sent||{};S.imp=S.imp||{};S.tx=S.tx||{};S.ed=S.ed||{};S.bd=S.bd||{};S.snd=S.snd||"btn";
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const U=()=>{
   const o={};
@@ -79,7 +79,7 @@ function nav(){
   const t={cards:"Карточки",aud:"Аудио",speak:"Речь",prog:"Прогресс",book:"Книги",set:"Слова"};
   $("#nav").innerHTML=Object.entries(t).map(([k,v])=>`<button class="${k==tab?'on':''}" onclick="go('${k}')">${v}</button>`).join("");
 }
-function go(k){if(k!="aud")stopAud();A.bd=null;tab=k;cur=null;render()}
+function go(k){if(k!="aud")stopAud();A.bd=null;tab=k;cur=null;said=hinted=null;render()}
 function unitSelect(){
   const opts=Object.keys(U()).sort((a,b)=>a.localeCompare(b,0,{numeric:true})).map(k=>{const[b,n]=k.split(".");return`<option value="${k}" ${k==S.sel?'selected':''}>Том ${b}, юнит ${n}</option>`}).join("");
   return`<select onchange="stopAud();A.bd=null;S.sel=this.value;A.tid=null;A.idx=-1;save();cur=null;render()">${opts}</select>`;
@@ -94,16 +94,52 @@ function rCards(){
   if(!cur){h+=`<div class="card"><h2>На сегодня всё</h2><p class="mut">Выберите другой юнит или возвращайтесь завтра.</p></div>`}
   else{
     const w=cur.split(":")[1],note=u.notes?.[w]||"";
-    h+=`<div class="card"><div class="word">${w}</div>
+    const cc=cardClips();if(cc)setSrc(cc.tr);
+    h+=`<div class="card"><div class="word" style="display:flex;align-items:center;justify-content:center;gap:12px">${w}${cc?`<button class="t" style="font-size:22px;padding:6px 12px" onclick="cardPlay([0])" title="Повторить слово">🔊</button>`:""}</div>
     <textarea id="sent" placeholder="Ваше предложение со словом ${w}">${esc(S.sent[cur]||"")}</textarea>
     ${shown?`${(()=>{const e=dbEntry(S.sel,w);return e?`<p><span class="chip">${esc(e.pos)}</span>${esc(e.d)}<br><i class="mut">${esc(e.x)}</i></p>`:""})()}<p class="mut">${note?"Подсказка: "+esc(note):"Вспомните перевод, другую часть речи и предлог."}</p>
+    ${cc?`<div class="wrap" style="margin-top:0"><button class="t" onclick="cardPlay([1])">🔊 Определение</button><button class="t" onclick="cardPlay([2])">🔊 Пример</button><button class="t" onclick="cardPlay([0,1,2])">🔊 Всё</button></div>`:""}
     <div class="row"><button class="b g" onclick="gr(0)">Забыл</button><button class="b g" onclick="gr(3)">Трудно</button><button class="b" onclick="gr(4)">Хорошо</button><button class="b" onclick="gr(5)">Легко</button></div>`
     :`<button class="b" style="width:100%;margin-top:10px" onclick="shown=true;keep();render()">Показать подсказку</button>`}</div>`;
   }
   $("#app").innerHTML=h;
+  if(cur&&cardClips()){
+    if(S.snd=="card"&&said!=cur){said=cur;cardPlay([0])}
+    if(S.snd=="hint"&&shown&&hinted!=cur){hinted=cur;cardPlay([0,1,2])}
+  }
+}
+let said=null,hinted=null;
+// Клипы слов текущего юнита (с ручными правками границ) или null, если записи слов нет
+function cardClips(){
+  const tr=tracksOf(S.sel).find(t=>t.id=="words"),u=U()[S.sel];
+  if(!tr||tr.mode!="entries"||!u||tr.clips.length!=u.words.length*3)return null;
+  const bd=S.bd[trKey(tr)]||{};
+  return{tr,clips:tr.clips.map((c,i)=>bd[i]?[bd[i][0],bd[i][1]]:[c[0],c[1]])};
+}
+// list: какие части слова играть по очереди: 0 слово, 1 определение, 2 пример
+function cardPlay(list){
+  const cc=cardClips();if(!cc||!cur)return;
+  const wi=U()[S.sel].words.indexOf(cur.split(":")[1]);if(wi<0)return;
+  const tok=++A.tok;A.whole=false;A.end=null;AU.pause();setSrc(cc.tr);
+  const f=cc.tr.file;let k=0,tries=0;
+  const ready=()=>BLOBS[f]&&AU.src==BLOBS[f]&&AU.readyState>=1;
+  const next=()=>{
+    if(tok!=A.tok)return;
+    if(!ready()){if(++tries<60)setTimeout(next,100);return}
+    if(k>=list.length){AU.pause();return}
+    const c=cc.clips[wi*3+list[k++]],end=c[1]+0.18;
+    AU.playbackRate=A.rate;AU.currentTime=Math.max(0,c[0]-0.12);AU.play().catch(()=>{});
+    const poll=()=>{
+      if(tok!=A.tok)return;
+      if(AU.currentTime>=end){AU.pause();if(k<list.length)setTimeout(next,350);return}
+      if(!AU.paused||AU.seeking||AU.readyState<2)requestAnimationFrame(poll);
+    };
+    poll();
+  };
+  next();
 }
 function keep(){const t=$("#sent");if(t&&cur){S.sent[cur]=t.value;save()}}
-function gr(q){keep();grade(cur,q);cur=null;render()}
+function gr(q){keep();stopAud();grade(cur,q);cur=null;said=hinted=null;render()}
 
 /* ---------- аудио ---------- */
 const AU=new Audio();AU.preload="metadata";
@@ -299,7 +335,12 @@ function rProg(){
 
 /* ---------- слова ---------- */
 function rSet(){
-  $("#app").innerHTML=`<div class="card"><h2>Импорт слов</h2>
+  const sm=(v,l)=>`<button class="t ${S.snd==v?'on':''}" onclick="S.snd='${v}';save();render()">${l}</button>`;
+  $("#app").innerHTML=`<div class="card"><h2>Звук на карточках</h2>
+  <p class="mut">Когда озвучивать слово. Кнопка 🔊 на карточке есть при любом варианте, если запись слов юнита загружена.</p>
+  <div class="wrap">${sm("btn","Только по кнопке")}${sm("card","При появлении карточки")}${sm("hint","После подсказки")}</div>
+  <p class="mut">«После подсказки»: слово, определение и пример звучат, когда вы нажали «Показать подсказку».</p></div>
+  <div class="card"><h2>Импорт слов</h2>
   <p class="mut">По одной строке на юнит: <b>том.юнит: слово, слово, ...</b><br>Например: 1.2: apple, bridge, careful</p>
   <textarea id="imp" placeholder="1.2: ..."></textarea>
   <div class="row" style="margin-top:8px"><button class="b" onclick="doImp()">Добавить</button><button class="b g" onclick="exp()">Экспорт CSV</button></div></div>

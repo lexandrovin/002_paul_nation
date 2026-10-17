@@ -1,4 +1,4 @@
-const C="words16-v7",CORE=["./","index.html","lib.js","store.js","ingest.js","units.js","tracks.js","pdf.min.js","pdf.worker.min.js","manifest.json","icon-192.png","icon-512.png"];
+const C="words16-v8",CORE=["./","index.html","lib.js","store.js","ingest.js","units.js","tracks.js","pdf.min.js","pdf.worker.min.js","manifest.json","icon-192.png","icon-512.png"];
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(CORE)))});
 self.addEventListener("activate",e=>e.waitUntil(
   caches.keys().then(ks=>Promise.all(ks.filter(k=>k!=C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
