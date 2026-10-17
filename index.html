@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1f6f5c">
+<title>Words 1–6</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#1d2421;--mut:#6b7570;--acc:#1f6f5c;--line:#e2ded4;--bad:#b5483a;--soft:#e6f1ed}
+@media(prefers-color-scheme:dark){:root{--bg:#141816;--card:#1e2421;--ink:#ece9e1;--mut:#9aa39e;--acc:#4db596;--line:#303a35;--bad:#e08072;--soft:#22332d}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,sans-serif;padding-bottom:72px}
+main{max-width:560px;margin:0 auto;padding:16px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line)}
+nav button{flex:1;padding:14px 2px;border:0;background:none;color:var(--mut);font:inherit;font-size:13px}
+nav button.on{color:var(--acc);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+h2{margin:0 0 10px;font-size:20px}.mut{color:var(--mut);font-size:14px}
+.word{font-size:34px;font-weight:700;text-align:center;margin:18px 0}
+button.b{border:0;border-radius:10px;padding:12px 14px;font:inherit;background:var(--acc);color:#fff;cursor:pointer}
+button.g{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+button.t{background:var(--card);color:var(--mut);border:1px solid var(--line);padding:8px 10px;font-size:14px}
+button.t.on{background:var(--soft);color:var(--acc);border-color:var(--acc)}
+.row{display:flex;gap:8px}.row>*{flex:1}.wrap{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+textarea,select,input{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+textarea{min-height:90px}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.cell{aspect-ratio:1;border-radius:8px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--mut)}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:6px 0}.bar i{display:block;height:100%;background:var(--acc)}
+.hide{display:none}
+.now{min-height:110px;display:flex;flex-direction:column;justify-content:center;text-align:center}
+.now .k{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.now .tx{font-size:22px;line-height:1.35;margin:6px 0 4px}
+.blur:not(.rev){filter:blur(7px);cursor:pointer}
+.clip{display:flex;gap:10px;align-items:flex-start;padding:10px 6px;border-bottom:1px solid var(--line);border-radius:8px}
+.clip:last-child{border-bottom:0}
+.clip.on{background:var(--soft)}
+.clip .p{flex:none;width:38px;height:38px;border-radius:50%;border:1px solid var(--acc);background:none;color:var(--acc);font-size:15px}
+.clip.on .p{background:var(--acc);color:#fff}
+.clip .c{flex:1;min-width:0}.clip .c b{font-weight:700}
+.chip{display:inline-block;font-size:11px;color:var(--mut);border:1px solid var(--line);border-radius:6px;padding:0 6px;margin-right:6px}
+.clip .e{flex:none;border:0;background:none;color:var(--mut);padding:4px}
+.entry-start{margin-top:6px;border-top:2px solid var(--line)}
+</style></head><body>
+<main id="app"></main>
+<nav id="nav"></nav>
+<script src="lib.js"></script>
+<script src="store.js"></script>
+<script src="ingest.js"></script>
+<script src="units.js"></script>
+<script src="tracks.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const KEY="words16";
+let S=JSON.parse(localStorage.getItem(KEY)||"{}");
+S.cards=S.cards||{};S.sel=S.sel||"1.1";S.sent=S.sent||{};S.imp=S.imp||{};S.tx=S.tx||{};S.ed=S.ed||{};S.bd=S.bd||{};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const U=()=>{
+  const o={};
+  for(const k in DB.units)o[k]={words:DB.units[k].words,prompts:[],notes:{}};
+  for(const k in window.UNITS)o[k]=Object.assign({},o[k],window.UNITS[k],o[k]?{words:o[k].words}:{});
+  return Object.assign(o,S.imp);
+};
+const dbEntry=(k,w)=>((DB.units[k]||{}).entries||[]).find(e=>e.w==w);
+const today=()=>Math.floor(Date.now()/864e5);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let tab="cards",cur=null,shown=false,rec=null;
+
+function card(id){return S.cards[id]||(S.cards[id]={ef:2.5,n:0,int:0,due:0,seen:0})}
+function grade(id,q){
+  const c=card(id);c.seen++;
+  if(q<3){c.n=0;c.int=1}else{c.n++;c.int=c.n==1?1:c.n==2?3:Math.round(c.int*c.ef)}
+  c.ef=Math.max(1.3,c.ef+0.1-(5-q)*(0.08+(5-q)*0.02));
+  c.due=today()+(q<3?0:c.int);save();
+}
+function dueList(){
+  const u=U()[S.sel];if(!u)return[];
+  return u.words.map(w=>S.sel+":"+w).filter(id=>(S.cards[id]?.due??0)<=today()||!S.cards[id]);
+}
+function nav(){
+  const t={cards:"Карточки",aud:"Аудио",speak:"Речь",prog:"Прогресс",book:"Книги",set:"Слова"};
+  $("#nav").innerHTML=Object.entries(t).map(([k,v])=>`<button class="${k==tab?'on':''}" onclick="go('${k}')">${v}</button>`).join("");
+}
+function go(k){if(k!="aud")stopAud();A.bd=null;tab=k;cur=null;render()}
+function unitSelect(){
+  const opts=Object.keys(U()).sort((a,b)=>a.localeCompare(b,0,{numeric:true})).map(k=>{const[b,n]=k.split(".");return`<option value="${k}" ${k==S.sel?'selected':''}>Том ${b}, юнит ${n}</option>`}).join("");
+  return`<select onchange="stopAud();A.bd=null;S.sel=this.value;A.tid=null;A.idx=-1;save();cur=null;render()">${opts}</select>`;
+}
+function render(){nav();({cards:rCards,aud:rAud,speak:rSpeak,prog:rProg,book:rBooks,set:rSet})[tab]()}
+
+/* ---------- карточки ---------- */
+function rCards(){
+  const list=dueList(),u=U()[S.sel];
+  if(!cur||!list.includes(cur))cur=list[0]||null,shown=false;
+  let h=unitSelect()+`<p class="mut">К повторению: ${list.length} из ${u?u.words.length:0}</p>`;
+  if(!cur){h+=`<div class="card"><h2>На сегодня всё</h2><p class="mut">Выберите другой юнит или возвращайтесь завтра.</p></div>`}
+  else{
+    const w=cur.split(":")[1],note=u.notes?.[w]||"";
+    h+=`<div class="card"><div class="word">${w}</div>
+    <textarea id="sent" placeholder="Ваше предложение со словом ${w}">${esc(S.sent[cur]||"")}</textarea>
+    ${shown?`${(()=>{const e=dbEntry(S.sel,w);return e?`<p><span class="chip">${esc(e.pos)}</span>${esc(e.d)}<br><i class="mut">${esc(e.x)}</i></p>`:""})()}<p class="mut">${note?"Подсказка: "+esc(note):"Вспомните перевод, другую часть речи и предлог."}</p>
+    <div class="row"><button class="b g" onclick="gr(0)">Забыл</button><button class="b g" onclick="gr(3)">Трудно</button><button class="b" onclick="gr(4)">Хорошо</button><button class="b" onclick="gr(5)">Легко</button></div>`
+    :`<button class="b" style="width:100%;margin-top:10px" onclick="shown=true;keep();render()">Показать подсказку</button>`}</div>`;
+  }
+  $("#app").innerHTML=h;
+}
+function keep(){const t=$("#sent");if(t&&cur){S.sent[cur]=t.value;save()}}
+function gr(q){keep();grade(cur,q);cur=null;render()}
+
+/* ---------- аудио ---------- */
+const AU=new Audio();AU.preload="metadata";
+const A={tid:null,idx:-1,end:null,whole:false,loop:false,chain:false,rate:1,hide:false,tok:0,file:""};
+const tracksOf=u=>DB.tracks[u]||(window.TRACKS||{})[u]||[];
+function curTrack(){const t=tracksOf(S.sel);return t.find(x=>x.id==A.tid)||t[0]||null}
+const trKey=tr=>S.sel+":"+tr.id;
+
+// Клипы трека с текстом. Текст книги в приложение не вшит: его вставляет пользователь из своей книги.
+function buildClips(tr){
+  const key=trKey(tr),dbu0=DB.units[S.sel],raw=S.tx[key]||((tr.mode!="entries"&&dbu0&&dbu0.story)?dbu0.story.text:""),ed=S.ed[key]||{};let clips,info="";
+  if(tr.mode=="entries"){
+    const words=(U()[S.sel]||{}).words||[];
+    const dbu=DB.units[S.sel];
+    let p=null;
+    if(dbu&&dbu.entries&&dbu.entries.length==words.length){p={items:dbu.entries.map(e=>({d:e.d,x:e.x})),found:words.length};info=`Текст из PDF: ${words.length} слов`}
+    else if(raw){p=Lib.parseEntries(raw,words);info=`Найдено слов: ${p.found} из ${words.length}`}
+    clips=tr.clips.map((c,i)=>{
+      const wi=Math.floor(i/3),k=c[2];
+      return{s:c[0],e:c[1],k,wi,t:k=="w"?(words[wi]||""):(p?.items[wi]?.[k=="d"?"d":"x"]||"")};
+    });
+  }else{
+    clips=tr.clips.map(c=>({s:c[0],e:c[1],k:"s",t:""}));
+    if(raw){
+      const sents=Lib.splitSentences(raw),al=Lib.alignSentences(tr.clips,sents);
+      if(al){
+        clips=al.map(c=>({s:c[0],e:c[1],k:"s",t:c[2],chk:c[3]>=3||c[4]<0.6||c[4]>1.6}));
+        const bad=clips.map((c,i)=>c.chk?i+1:0).filter(Boolean);
+        info=(S.tx[key]?"":"Текст из PDF. ")+`Фраз ${al.length}, пауз ${tr.clips.length}, склеено ${tr.clips.length-al.length}`+(bad.length?` · проверить: ${bad.join(", ")}`:"");
+      }
+      else info=`⚠ Фраз в тексте (${sents.length}) больше, чем пауз в записи (${tr.clips.length}). Проверьте текст.`;
+    }
+  }
+  clips.forEach((c,i)=>{if(ed[i]!=null)c.t=ed[i]});
+  const bd=S.bd[key]||{};
+  clips.forEach((c,i)=>{if(bd[i]){c.s=bd[i][0];c.e=bd[i][1];c.m=true}});
+  return{clips,info,hasText:!!raw||(tr.mode=="entries"&&!!DB.units[S.sel])};
+}
+let C=[];
+function label(c,i){
+  if(c.t)return esc(c.t);
+  return c.k=="d"?"<span class=mut>определение</span>":c.k=="x"?"<span class=mut>пример</span>":`<span class=mut>Фраза ${i+1}</span>`;
+}
+function rAud(){
+  const trs=tracksOf(S.sel);let h=unitSelect();
+  if(!trs.length){
+    $("#app").innerHTML=h+`<div class="card"><h2>Аудио</h2><p class="mut">Для этого юнита аудио ещё не загружено. Откройте вкладку «Книги» и выберите mp3 тома.</p></div>`;return;
+  }
+  const tr=curTrack();A.tid=tr.id;const b=buildClips(tr);C=b.clips;
+  h+=`<div class="wrap">${trs.map(t=>`<button class="t ${t.id==tr.id?'on':''}" onclick="A.tid='${t.id}';stopAud();A.bd=null;A.idx=-1;render()">${esc(t.title)}</button>`).join("")}</div>`;
+  h+=`<div class="card now" id="now"></div>
+  <div class="row"><button class="b g" onclick="step(-1)">⏮</button><button class="b" id="pp" onclick="toggle()">▶</button><button class="b g" onclick="step(1)">⏭</button></div>
+  <div class="wrap">
+    <button class="t ${A.chain?'on':''}" onclick="A.chain=!A.chain;render()">Подряд</button>
+    <button class="t ${A.loop?'on':''}" onclick="A.loop=!A.loop;render()">Повтор</button>
+    <button class="t" onclick="A.rate=A.rate==1?0.75:A.rate==0.75?1.25:1;AU.playbackRate=A.rate;render()">Скорость ×${A.rate}</button>
+    <button class="t ${A.hide?'on':''}" onclick="A.hide=!A.hide;render()">Скрыть текст</button>
+    <button class="t" onclick="playWhole()">Весь файл</button>
+  </div>`;
+  const needText=tr.mode=="entries"?"слово, определение и пример (как в книге) для всех слов юнита":"текст рассказа вместе с названием";
+  h+=`<details class="card" ${b.hasText?'':'open'}><summary><b>Текст из книги</b> <span class="mut">${esc(b.info||"не добавлен")}</span></summary>
+    <p class="mut">Тексты книги в приложение не вшиты. Если PDF тома загружен во вкладке «Книги», текст подставляется сам. Иначе скопируйте из своей книги (PDF) ${needText} и вставьте сюда: приложение само сопоставит строки с записью. Ошибки распознавания можно поправить кнопкой ✎ у фразы.</p>
+    <textarea id="imp2" placeholder="Вставьте текст"></textarea>
+    <div class="row" style="margin-top:8px"><button class="b" onclick="saveTx('${trKey(tr)}')">Сопоставить</button><button class="b g" onclick="delTx('${trKey(tr)}')">Удалить текст</button></div></details>`;
+  h+=`<div class="card" style="padding:8px 12px">`+C.map((c,i)=>{
+    const head=tr.mode=="entries"&&c.k=="w";
+    const kind=tr.mode=="entries"?`<span class="chip">${c.k=="w"?"слово":c.k=="d"?"опр.":"пример"}</span>`:"";
+    return`<div class="clip ${head?'entry-start':''}" id="c${i}"><button class="p" onclick="playClip(${i})">▶</button>
+      <div class="c">${kind}<span class="${A.hide&&c.k!="w"?'blur':''}" onclick="this.classList.toggle('rev')">${head?`<b>${label(c,i)}</b>`:label(c,i)}</span></div>
+      ${c.chk?`<span class="chip" style="color:var(--bad);border-color:var(--bad)" title="Проверьте границы">?</span>`:""}${c.m?`<span class="chip" title="Границы правили вручную">⏱</span>`:""}
+      <button class="e" onclick="openBd(${i})" title="Границы фразы">⏱</button>
+      <button class="e" onclick="editClip(${i})" title="Править текст">✎</button></div>${A.bd===i?bdPanel(i):""}`}).join("")+`</div>`;
+  $("#app").innerHTML=h;
+  AU.playbackRate=A.rate;setSrc(tr);updNow();
+}
+// Файл целиком грузится в память: так перемотка к фразе работает на любом хостинге
+// (а на iPhone — и там, где сервер не поддерживает Range-запросы).
+const BLOBS={};
+function setSrc(tr){
+  const f=tr.file;if(A.file==f)return;A.file=f;
+  if(BLOBS[f]){AU.src=BLOBS[f];return}
+  if(f.startsWith("idb:")){
+    DBX.getAudio(f.slice(4)).then(b=>{
+      if(!b){return}
+      Object.keys(BLOBS).filter(k=>k.startsWith("idb:")).forEach(k=>{URL.revokeObjectURL(BLOBS[k]);delete BLOBS[k]});
+      BLOBS[f]=URL.createObjectURL(b);if(A.file==f)AU.src=BLOBS[f]});
+    return;
+  }
+  fetch(f).then(r=>{if(!r.ok)throw 0;return r.blob()})
+    .then(b=>{BLOBS[f]=URL.createObjectURL(b);if(A.file==f)AU.src=BLOBS[f]})
+    .catch(()=>{if(A.file==f)AU.src=f});
+}
+function saveTx(key){const v=$("#imp2").value.trim();if(!v)return;S.tx[key]=v;delete S.ed[key];save();render()}
+function delTx(key){if(confirm("Удалить вставленный текст и правки?")){delete S.tx[key];delete S.ed[key];save();render()}}
+function bdPanel(i){
+  const c=C[i],f=(k,l)=>`<div style="margin:6px 0"><b>${l}</b> <span id="bd${k}">${c[k].toFixed(2)}</span> с
+    <span class="wrap" style="display:inline-flex;margin:0 0 0 6px">${[-0.1,-0.02,0.02,0.1].map(d=>`<button class="t" onclick="nudge(${i},'${k}',${d})">${d>0?"+":"−"}${Math.abs(d)}</button>`).join("")}</span></div>`;
+  return`<div class="card" style="margin:6px 0 10px;background:var(--soft)">${f("s","Начало")}${f("e","Конец")}
+    <div class="row"><button class="b" onclick="playClip(${i})">▶ Проверить</button><button class="b g" onclick="resetBd(${i})">Вернуть авто</button><button class="b g" onclick="A.bd=null;render()">Готово</button></div></div>`;
+}
+function openBd(i){A.bd=A.bd===i?null:i;render();if(A.bd===i){const r=$("#c"+i);if(r)r.scrollIntoView({block:"center"})}}
+function nudge(i,k,d){
+  const tr=curTrack(),key=trKey(tr),c=C[i];
+  c[k]=Math.max(0,Math.round((c[k]+d)*100)/100);if(c.e<=c.s+0.1)c.e=c.s+0.1;
+  (S.bd[key]=S.bd[key]||{})[i]=[c.s,c.e];save();
+  $("#bds").textContent=c.s.toFixed(2);$("#bde").textContent=c.e.toFixed(2);
+  playClip(i);
+}
+function resetBd(i){
+  const tr=curTrack(),key=trKey(tr);if(S.bd[key]){delete S.bd[key][i];save()}
+  A.bd=null;render();
+}
+function editClip(i){
+  const tr=curTrack(),key=trKey(tr),v=prompt("Текст фразы",C[i].t||"");
+  if(v==null)return;(S.ed[key]=S.ed[key]||{})[i]=v;save();render();
+}
+function seek(t){
+  const go=()=>{AU.currentTime=t;AU.playbackRate=A.rate;AU.play().catch(()=>{})};
+  if(AU.readyState>=1)go();else AU.addEventListener("loadedmetadata",go,{once:true});
+}
+function playClip(i){
+  const c=C[i];if(!c)return;const tok=++A.tok;
+  A.idx=i;A.whole=false;A.end=c.e+0.18;seek(Math.max(0,c.s-0.12));updNow();raf(tok);
+}
+function playWhole(){const tok=++A.tok;A.whole=true;A.end=null;seek(0);raf(tok)}
+function raf(tok){
+  if(tok!=A.tok)return;
+  const t=AU.currentTime;
+  if(A.whole){const i=C.findIndex(c=>t>=c.s-0.15&&t<=c.e+0.3);if(i>=0&&i!=A.idx){A.idx=i;updNow()}}
+  else if(A.end!=null&&t>=A.end){clipEnded();return}
+  if(!AU.paused||AU.seeking||AU.readyState<2)requestAnimationFrame(()=>raf(tok));
+}
+function clipEnded(){
+  const i=A.idx;
+  if(A.loop){playClip(i);return}
+  AU.pause();
+  if(A.chain&&i<C.length-1){const tok=A.tok;setTimeout(()=>{if(tok==A.tok)playClip(i+1)},400)}
+  else updNow();
+}
+function stopAud(){A.tok++;AU.pause()}
+function step(d){
+  const n=A.idx<0?(d>0?0:C.length-1):Math.min(C.length-1,Math.max(0,A.idx+d));
+  playClip(n);
+}
+function toggle(){
+  if(!AU.paused){stopAud();updNow();return}
+  if(A.whole){const tok=++A.tok;AU.play();raf(tok)}else playClip(A.idx<0?0:A.idx);
+}
+AU.addEventListener("play",()=>updNow());AU.addEventListener("pause",()=>updNow());
+function updNow(){
+  const n=$("#now");if(!n||tab!="aud")return;
+  const c=C[A.idx],pp=$("#pp");
+  if(pp)pp.textContent=AU.paused?"▶":"⏸";
+  document.querySelectorAll(".clip.on").forEach(e=>e.classList.remove("on"));
+  if(!c){n.innerHTML=`<div class="mut">Нажмите ▶ у фразы или «Весь файл»</div>`;return}
+  const tr=curTrack(),kind=tr.mode=="entries"?(c.k=="w"?"слово":c.k=="d"?"определение":"пример"):`фраза ${A.idx+1} из ${C.length}`;
+  n.innerHTML=`<div class="k">${kind}</div><div class="tx ${A.hide&&c.k!="w"?'blur':''}" onclick="this.classList.toggle('rev')">${c.t?esc(c.t):"<span class=mut>текст не добавлен</span>"}</div>`;
+  const row=$("#c"+A.idx);if(row){row.classList.add("on");row.scrollIntoView({block:"nearest",behavior:"smooth"})}
+}
+
+/* ---------- речь ---------- */
+function rSpeak(){
+  const u=U()[S.sel],p=u?.prompts||[];
+  const q=p.length?p[Math.floor(Math.random()*p.length)]:"Для этого юнита ещё нет вопросов. Скажите 3 предложения с любыми словами юнита.";
+  $("#app").innerHTML=unitSelect()+`<div class="card"><h2>Говорение</h2><p>${esc(q)}</p><p class="mut">Ответьте 2–3 предложениями вслух.</p>
+  <div class="row"><button class="b" id="r" onclick="toggleRec()">● Запись</button><button class="b g" onclick="render()">Другой вопрос</button></div>
+  <audio id="pl" controls class="hide" style="width:100%;margin-top:12px"></audio></div>`;
+}
+async function toggleRec(){
+  const b=$("#r");
+  if(rec&&rec.state=="recording"){rec.stop();b.textContent="● Запись";return}
+  try{const st=await navigator.mediaDevices.getUserMedia({audio:true});const ch=[];
+    rec=new MediaRecorder(st);rec.ondataavailable=e=>ch.push(e.data);
+    rec.onstop=()=>{st.getTracks().forEach(t=>t.stop());const a=$("#pl");a.src=URL.createObjectURL(new Blob(ch));a.classList.remove("hide");a.play()};
+    rec.start();b.textContent="■ Стоп"}catch(e){alert("Нет доступа к микрофону")}
+}
+
+/* ---------- прогресс ---------- */
+function rProg(){
+  const all=U();let h="";
+  for(let b=1;b<=6;b++){
+    let words=0,seen=0,cells="";
+    for(let n=1;n<=30;n++){
+      const u=all[b+"."+n];let k=0;
+      if(u){words+=u.words.length;u.words.forEach(w=>{if(S.cards[b+"."+n+":"+w]?.n>=2){k++;seen++}})}
+      const pct=u?k/u.words.length:0;
+      cells+=`<div class="cell" style="${u?`background:rgba(31,111,92,${0.1+pct*0.7});color:${0.1+pct*0.7>=0.4?'#fff':'var(--ink)'}`:''}">${n}</div>`;
+    }
+    h+=`<div class="card"><h2>Том ${b}</h2><div class="bar"><i style="width:${words?seen/words*100:0}%"></i></div><p class="mut">Выучено ${seen} из ${words||"?"} слов (загружено)</p><div class="grid">${cells}</div></div>`;
+  }
+  $("#app").innerHTML=h;
+}
+
+/* ---------- слова ---------- */
+function rSet(){
+  $("#app").innerHTML=`<div class="card"><h2>Импорт слов</h2>
+  <p class="mut">По одной строке на юнит: <b>том.юнит: слово, слово, ...</b><br>Например: 1.2: apple, bridge, careful</p>
+  <textarea id="imp" placeholder="1.2: ..."></textarea>
+  <div class="row" style="margin-top:8px"><button class="b" onclick="doImp()">Добавить</button><button class="b g" onclick="exp()">Экспорт CSV</button></div></div>
+  <div class="card"><button class="b g" style="width:100%" onclick="if(confirm('Сбросить прогресс?')){S.cards={};save();render()}">Сбросить прогресс</button></div>`;
+}
+function doImp(){
+  let n=0;
+  $("#imp").value.split("\n").forEach(l=>{
+    const m=l.match(/^\s*(\d)\.(\d{1,2})\s*:\s*(.+)$/);
+    if(m&&m[1]>=1&&m[1]<=6&&m[2]>=1&&m[2]<=30){
+      S.imp[m[1]+"."+m[2]]={words:m[3].split(/[,;]/).map(x=>x.trim().toLowerCase()).filter(Boolean),prompts:[],notes:{}};n++}
+  });
+  save();alert("Добавлено юнитов: "+n);render();
+}
+function exp(){
+  const rows=["word,unit,your_sentence"];
+  for(const[k,u]of Object.entries(U()))u.words.forEach(w=>rows.push(`${w},${k},"${(S.sent[k+":"+w]||"").replace(/"/g,'""')}"`));
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([rows.join("\n")],{type:"text/csv"}));a.download="words.csv";a.click();
+}
+/* ---------- книги: PDF и mp3 с устройства ---------- */
+const LOG={t:""};
+function logp(s,add){const e=$("#log");if(add)LOG.t+=s+"\n";else LOG.t=LOG.t.split("\n").slice(0,-1).join("\n")+(LOG.t?"\n":"")+s;if(e){e.textContent=LOG.t;e.scrollTop=e.scrollHeight}}
+function volStat(v){
+  let txt=0,w=0,st=0;const noAudio=[];
+  for(let n=1;n<=30;n++){const k=v+"."+n,t=DB.tracks[k]||[];
+    if(DB.units[k])txt++;
+    const hw=t.some(x=>x.id=="words"),hs=t.some(x=>x.id=="story");if(hw)w++;if(hs)st++;
+    if(!hw||!hs)noAudio.push(n);}
+  return{txt,w,st,noAudio};
+}
+function rBooks(){
+  const v=S.bv||1,st=volStat(v);
+  let cells="";
+  for(let n=1;n<=30;n++){const k=v+"."+n,t=DB.tracks[k]||[];
+    const c=(DB.units[k]?1:0)+(t.some(x=>x.id=="words")?1:0)+(t.some(x=>x.id=="story")?1:0);
+    cells+=`<div class="cell" style="${c?`background:rgba(31,111,92,${0.12+c*0.25});color:${c>=2?'#fff':'var(--ink)'};font-weight:600`:''}">${n}</div>`}
+  $("#app").innerHTML=`<div class="wrap">${[1,2,3,4,5,6].map(b=>`<button class="t ${b==v?'on':''}" onclick="S.bv=${b};save();render()">Том ${b}</button>`).join("")}</div>
+  <div class="card"><h2>Том ${v}: что загружено</h2>
+    <p class="mut">Текст: ${st.txt} из 30 юнитов · Аудио слов: ${st.w} из 30 · Аудио рассказов: ${st.st} из 30</p>
+    <div class="grid">${cells}</div>
+    <p class="mut">Всё хранится только на этом устройстве. Тёмная клетка: загружены текст и обе записи.</p></div>
+  <div class="card"><h2>1. PDF тома</h2>
+    <p class="mut">Файл со словами и рассказами (30 юнитов). Текст читается прямо на устройстве, никуда не отправляется.</p>
+    <input type="file" id="fpdf" accept="application/pdf,.pdf" class="hide" onchange="importPdf(this.files[0],${v});this.value=''">
+    <button class="b" style="width:100%" onclick="$('#fpdf').click()">Выбрать PDF</button></div>
+  <div class="card"><h2>2. Аудио тома</h2>
+    <p class="mut">Выберите сразу все файлы 01.mp3 … 60.mp3 (нечётные: слова, чётные: рассказы). Приложение само найдёт слова и фразы по паузам.</p>
+    <input type="file" id="fmp3" accept="audio/mpeg,.mp3" multiple class="hide" onchange="importMp3([...this.files],${v});this.value=''">
+    <button class="b" style="width:100%" onclick="$('#fmp3').click()">Выбрать mp3</button></div>
+  <pre id="log" class="card mut" style="white-space:pre-wrap;font-size:13px;max-height:260px;overflow:auto">${esc(LOG.t||"Журнал загрузки появится здесь.")}</pre>
+  <div class="card"><button class="b g" style="width:100%" onclick="clearVol(${v})">Удалить всё, что загружено для тома ${v}</button></div>`;
+}
+async function clearVol(v){
+  if(!confirm("Удалить загруженные текст и аудио тома "+v+"? Прогресс карточек сохранится."))return;
+  await DBX.clearVolume(v);LOG.t="";render();
+}
+async function importPdf(file,v){
+  if(!file)return;
+  const m=file.name.match(/(\d)\D*$/);
+  if(m&&+m[1]!=v&&m[1]>=1&&m[1]<=6&&!confirm(`Имя файла «${file.name}» похоже на том ${m[1]}, а выбран том ${v}. Продолжить?`))return;
+  LOG.t="";logp("Читаю "+file.name+" …",true);
+  try{
+    const pdfjs=await import("./pdf.min.js");
+    pdfjs.GlobalWorkerOptions.workerSrc=new URL("./pdf.worker.min.js",location.href).href;
+    const doc=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+    const pages=[];
+    for(let i=1;i<=doc.numPages;i++){
+      const p=await doc.getPage(i),tc=await p.getTextContent();
+      pages.push(Ingest.groupLines(tc.items.map(t=>({str:t.str,x:t.transform[4],y:t.transform[5],w:t.width,h:t.height}))));
+      if(i%5==0||i==doc.numPages)logp(`Страница ${i} из ${doc.numPages}`);
+    }
+    const r=Ingest.buildUnits(pages);let nu=0,nw=0;
+    for(const k of Object.keys(r.units)){
+      const n=+k,u=r.units[k];if(!(n>=1&&n<=30))continue;
+      await DBX.putUnit(v+"."+n,{words:u.words,entries:u.entries,story:u.story||null,issues:u.issues});nu++;nw+=u.words.length;
+    }
+    DBX.persist();
+    logp(`Готово: юнитов ${nu}, слов ${nw}.`,true);
+    if(nu!=30)logp(`⚠ Ожидалось 30 юнитов.`,true);
+    if(r.issues.length){logp(`Замечаний: ${r.issues.length}`,true);r.issues.slice(0,40).forEach(s=>logp("• "+s,true))}else logp("Замечаний нет.",true);
+  }catch(e){logp("Ошибка: "+(e&&e.message||e),true)}
+  render();
+}
+async function importMp3(files,v){
+  if(!files.length)return;
+  files.sort((a,b)=>a.name.localeCompare(b.name,0,{numeric:true}));
+  LOG.t="";logp(`Файлов: ${files.length}`,true);
+  const AC=window.AudioContext||window.webkitAudioContext,ctx=new AC();
+  let ok=0;
+  for(const f of files){
+    const m=f.name.replace(/\.[^.]*$/,"").match(/(\d+)(?!.*\d)/);const F=m?+m[1]:0;
+    if(!(F>=1&&F<=60)){logp(`• ${f.name}: не нашёл номер 1–60, пропущен`,true);continue}
+    const n=Math.ceil(F/2),kind=F%2?"words":"story",k=v+"."+n;
+    logp(`${f.name}: обрабатываю …`,true);
+    try{
+      const buf=await ctx.decodeAudioData(await f.arrayBuffer());
+      const ch=buf.numberOfChannels,pcm=new Float32Array(buf.length);
+      for(let c=0;c<ch;c++){const d=buf.getChannelData(c);for(let i=0;i<pcm.length;i++)pcm[i]+=d[i]/ch}
+      const nw=(DB.units[k]&&DB.units[k].words.length)||20;
+      const r=kind=="words"?Ingest.wordClips(pcm,buf.sampleRate,nw):Ingest.storyClips(pcm,buf.sampleRate,1.0);
+      if(!r.clips){logp(`• ${f.name} (юнит ${n}, слова): ${r.warn}`);continue}
+      await DBX.putAudio(k,kind,f);await DBX.putClips(k,kind,{clips:r.clips,warn:r.warn||""});delete S.bd[k+":"+(kind=="words"?"words":"story")];save();
+      let extra="";
+      if(kind=="story"){
+        const st=DB.units[k]&&DB.units[k].story;
+        if(!st)extra=" (текст ещё не загружен, склейку проверить не с чем)";
+        else{const q=Lib.checkStory(r.clips,st.text);
+          extra=!q.ok?` ⚠ фраз в тексте (${q.n}) больше, чем пауз в записи (${q.m})`
+            :` фраз ${q.n}, пауз ${q.m}, склеено ${q.glued}`+(q.chk.length?` ⚠ проверьте фразы: ${q.chk.join(", ")}`:"");}
+      }
+      logp(`${f.name}: юнит ${n}, ${kind=="words"?"слова":"рассказ"}, клипов ${r.clips.length}${r.warn?" ⚠ "+r.warn:""}${extra}`);ok++;
+    }catch(e){logp(`• ${f.name}: ошибка ${e&&e.message||e}`)}
+  }
+  try{ctx.close()}catch(e){}
+  DBX.persist();
+  logp(`Готово: загружено файлов ${ok} из ${files.length}.`,true);
+  render();
+}
+
+DBX.loadAll().then(()=>{if(!U()[S.sel]){const ks=Object.keys(U());if(ks.length)S.sel=ks[0]}render()});
+if("serviceWorker"in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js");
+</script></body></html>
